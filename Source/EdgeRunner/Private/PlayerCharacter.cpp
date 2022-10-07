@@ -1,11 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 #include "PlayerCharacter.h"
 
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "NiagaraFunctionLibrary.h"
-
 
 APlayerCharacter::APlayerCharacter() :
 MoveSpeed(20.0f),
@@ -14,7 +13,11 @@ MaxDashDistanceVel(1500.0f),
 MaxDashLimitingAngle(35.0f),
 DashPredictionFrequency(20.0f),
 MaxDashPredictionHeight(200.0f),
-bShowDashPredictionLocation(false)
+bShowDashPredictionLocation(false),
+bInitiateDash(false),
+DashSpeed(10.0f),
+bCanDash(true),
+DashCoolDown(5.0f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 	
@@ -42,13 +45,16 @@ void APlayerCharacter::Tick(float DeltaTime)
 
 	if(bShowDashPredictionLocation)
 	{
-		FTransform center =  CalculateDashLocation(Camera->GetComponentLocation(), 1000.0f);
-		/*if(DashPredictorMarker)
+		FTransform DashLoc;
+		if(CalculateDashLocation(Camera->GetComponentLocation(), 1000.0f, DashLoc))
 		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DashPredictorMarker, center.GetLocation(), center.GetRotation().Rotator() + FRotator(90, 0, 0));
-		}*/
+			DrawDebugSphere(GetWorld(), DashLoc.GetLocation(), 15.0f, 10.0f, FColor::Green);
+		}
+	}
 
-		DrawDebugSphere(GetWorld(), center.GetLocation(), 15.0f, 10.0f, FColor::Green);
+	if(bInitiateDash)
+	{
+		InitiateDash(LocationToDash, DeltaTime);
 	}
 }
 
@@ -98,18 +104,33 @@ void APlayerCharacter::Turn(float Value)
 
 void APlayerCharacter::DashPressed()
 {
+	if(!bCanDash)
+		return;
 	bShowDashPredictionLocation = true;
 }
 
 void APlayerCharacter::DashReleased()
 {
-	bShowDashPredictionLocation = false;
+	if(!bCanDash)
+		return;
+	FTransform Loc;
+	if(CalculateDashLocation(Camera->GetComponentLocation(), 1000.0f, Loc))
+	{
+		bInitiateDash = true;
+		LocationToDash = Loc.GetLocation();
+		bShowDashPredictionLocation = false;
+		bCanDash = false;
+		GetWorldTimerManager().SetTimer(DashTimerHandle, this, &APlayerCharacter::EnableDash, DashCoolDown);
+	}
 }
 
-
-FTransform APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxDistance)
+void APlayerCharacter::EnableDash()
 {
-	FTransform DashLocation;
+	bCanDash = true;	
+}
+
+bool APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxDistance, FTransform& DashLocation)
+{
 	FPredictProjectilePathParams Params;
 	FPredictProjectilePathResult Result;
 
@@ -131,17 +152,18 @@ FTransform APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, floa
 
 			DashLocation.SetLocation(NextDistance<PrevDistance ? Hit.NextLoc : Hit.PrevLoc);
 			DashLocation.SetRotation(NextDistance<PrevDistance ? Hit.NextRot.Quaternion() : Hit.PrevRot.Quaternion());
+			return true;
 		}
 		else
 		{
 			DashLocation.SetLocation(Result.HitResult.Location);
 			DashLocation.SetRotation(Result.HitResult.ImpactNormal.Rotation().Quaternion());
 			DrawDebugSphere(GetWorld(), Result.HitResult.Location, 15.0f, 10.0f, FColor::Red);
-			return DashLocation;
+			return true;
 		}
 	}
-	
-	return DashLocation;
+
+	return false;
 }
 
 float APlayerCharacter::GetHitAngle(FVector HitPoint) const
@@ -198,3 +220,16 @@ void APlayerCharacter::PredictionTrace(FHitResult Result, ELineTrace LineTrace, 
 	}
 }
 
+void APlayerCharacter::InitiateDash(FVector Location, float DeltaTime)
+{
+	FVector curLoc = GetActorLocation();
+	curLoc = FMath::VInterpConstantTo(curLoc, Location, DeltaTime,DashSpeed);
+	SetActorLocation(curLoc);
+	if(GetActorLocation() == Location)
+		bInitiateDash = false;
+	if(GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1, -1, FColor::Red, FString::Printf(TEXT("Location : %s"), *curLoc.ToString()));
+	}
+	
+}

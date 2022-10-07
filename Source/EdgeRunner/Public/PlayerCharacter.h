@@ -49,9 +49,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
 	float MaxDashPredictionHeight;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
-	bool bShowDashPredictionLocation;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
 	UNiagaraSystem* DashPredictorMarker;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	double DashSpeed;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	FVector DashError;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	float DashCoolDown;
 	
 private:
 	
@@ -60,12 +64,20 @@ private:
 
 protected:
 
+	bool bShowDashPredictionLocation;
+	bool bInitiateDash;
+	FVector LocationToDash;
+	bool bCanDash;
+	FTimerHandle DashTimerHandle;
+	
 	void MoveSideWays(float Value);
 	void MoveForward(float Value);
 	void LookUp(float Value);
 	void Turn(float Value);
 	void DashPressed();
 	void DashReleased();
+	void InitiateDash(FVector Location, float DeltaSeconds);
+	void EnableDash();
 
 	struct HitLocations
 	{
@@ -82,6 +94,6 @@ protected:
 
 public:
 
-	FTransform CalculateDashLocation(FVector CurrentLocation, float MaxDistance);
+	bool CalculateDashLocation(FVector CurrentLocation, float MaxDistance, FTransform& DashLocation);
 	
 };
