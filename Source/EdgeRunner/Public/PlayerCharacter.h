@@ -41,7 +41,7 @@ public:
 	float LookSpeed;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
-	float MaxDashDistanceVel = 1500.0f;
+	float MaxDashDistanceVel;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
 	float MaxDashLimitingAngle;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
@@ -56,6 +56,11 @@ public:
 	FVector DashError;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
 	float DashCoolDown;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	float MaxDashLimit;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float MaxSprintSpeed;
 	
 private:
 	
@@ -69,6 +74,8 @@ protected:
 	FVector LocationToDash;
 	bool bCanDash;
 	FTimerHandle DashTimerHandle;
+	bool bDashPressed;
+	float DefaultWalkSpeed;
 	
 	void MoveSideWays(float Value);
 	void MoveForward(float Value);
@@ -78,6 +85,10 @@ protected:
 	void DashReleased();
 	void InitiateDash(FVector Location, float DeltaSeconds);
 	void EnableDash();
+	void JumpPressed();
+	void JumpReleased();
+	void SprintPressed();
+	void SprintReleased();
 
 	struct HitLocations
 	{
@@ -89,6 +100,7 @@ protected:
 
 	float GetHitAngle(FVector HitPoint) const;
 	void PredictionTrace(FHitResult Result, ELineTrace LineTrace, HitLocations &Hit);
+	bool TraceIsInRange(FVector HitLocation);
 
 	
 

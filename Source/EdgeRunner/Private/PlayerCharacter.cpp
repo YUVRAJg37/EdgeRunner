@@ -14,10 +14,12 @@ MaxDashLimitingAngle(35.0f),
 DashPredictionFrequency(20.0f),
 MaxDashPredictionHeight(200.0f),
 bShowDashPredictionLocation(false),
-bInitiateDash(false),
 DashSpeed(10.0f),
+bInitiateDash(false),
+DashCoolDown(5.0f),
 bCanDash(true),
-DashCoolDown(5.0f)
+MaxDashLimit(2000.0f),
+MaxSprintSpeed(900.0f)
 {
 	PrimaryActorTick.bCanEverTick = true;
 	
@@ -31,6 +33,9 @@ DashCoolDown(5.0f)
 	bUseControllerRotationYaw = true;
 	Camera->bUsePawnControlRotation = true;
 	GetCharacterMovement()->bOrientRotationToMovement = false;
+
+	JumpMaxCount = 2;
+	DefaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 }
 
 void APlayerCharacter::BeginPlay()
@@ -69,6 +74,10 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 	PlayerInputComponent->BindAction(FName("Dash"), EInputEvent::IE_Pressed, this, &APlayerCharacter::DashPressed);
 	PlayerInputComponent->BindAction(FName("Dash"), EInputEvent::IE_Released, this, &APlayerCharacter::DashReleased);
+	PlayerInputComponent->BindAction(FName("Jump"), EInputEvent::IE_Pressed, this, &APlayerCharacter::JumpPressed);
+	PlayerInputComponent->BindAction(FName("Jump"), EInputEvent::IE_Released, this, &APlayerCharacter::JumpReleased);
+	PlayerInputComponent->BindAction(FName("Sprint"), EInputEvent::IE_Pressed, this, &APlayerCharacter::SprintPressed);
+	PlayerInputComponent->BindAction(FName("Sprint"), EInputEvent::IE_Released, this, &APlayerCharacter::SprintReleased);
 
 }
 
@@ -107,11 +116,12 @@ void APlayerCharacter::DashPressed()
 	if(!bCanDash)
 		return;
 	bShowDashPredictionLocation = true;
+	bDashPressed = true;
 }
 
 void APlayerCharacter::DashReleased()
 {
-	if(!bCanDash)
+	if(!bCanDash || !bDashPressed)
 		return;
 	FTransform Loc;
 	if(CalculateDashLocation(Camera->GetComponentLocation(), 1000.0f, Loc))
@@ -120,6 +130,7 @@ void APlayerCharacter::DashReleased()
 		LocationToDash = Loc.GetLocation();
 		bShowDashPredictionLocation = false;
 		bCanDash = false;
+		bDashPressed = false;
 		GetWorldTimerManager().SetTimer(DashTimerHandle, this, &APlayerCharacter::EnableDash, DashCoolDown);
 	}
 }
@@ -127,6 +138,27 @@ void APlayerCharacter::DashReleased()
 void APlayerCharacter::EnableDash()
 {
 	bCanDash = true;	
+}
+
+void APlayerCharacter::JumpPressed()
+{
+	Jump();
+}
+
+void APlayerCharacter::JumpReleased()
+{
+}
+
+void APlayerCharacter::SprintPressed()
+{
+	if(GetCharacterMovement()->IsFalling())
+		return;
+	GetCharacterMovement()->MaxWalkSpeed = MaxSprintSpeed;
+}
+
+void APlayerCharacter::SprintReleased()
+{
+	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
 }
 
 bool APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxDistance, FTransform& DashLocation)
@@ -143,7 +175,11 @@ bool APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxD
 	bool hit = UGameplayStatics::PredictProjectilePath(GetWorld(), Params, Result);
 	if(hit)
 	{
+		if(!TraceIsInRange(Result.HitResult.Location))
+			return false;
+		
 		HitLocations Hit;
+		
 		if(GetHitAngle(Result.HitResult.ImpactNormal)>=MaxDashLimitingAngle)
 		{
 			PredictionTrace(Result.HitResult, ELineTrace::ELT_Both, Hit);
@@ -152,6 +188,7 @@ bool APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxD
 
 			DashLocation.SetLocation(NextDistance<PrevDistance ? Hit.NextLoc : Hit.PrevLoc);
 			DashLocation.SetRotation(NextDistance<PrevDistance ? Hit.NextRot.Quaternion() : Hit.PrevRot.Quaternion());
+			
 			return true;
 		}
 		else
@@ -159,10 +196,11 @@ bool APlayerCharacter::CalculateDashLocation(FVector CurrentLocation, float MaxD
 			DashLocation.SetLocation(Result.HitResult.Location);
 			DashLocation.SetRotation(Result.HitResult.ImpactNormal.Rotation().Quaternion());
 			DrawDebugSphere(GetWorld(), Result.HitResult.Location, 15.0f, 10.0f, FColor::Red);
+			
 			return true;
 		}
 	}
-
+	
 	return false;
 }
 
@@ -220,13 +258,25 @@ void APlayerCharacter::PredictionTrace(FHitResult Result, ELineTrace LineTrace, 
 	}
 }
 
+bool APlayerCharacter::TraceIsInRange(FVector HitLocation)
+{
+	return FMath::Abs((HitLocation - GetActorLocation()).Size()) > MaxDashLimit ? false : true;	
+}
+
 void APlayerCharacter::InitiateDash(FVector Location, float DeltaTime)
 {
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	FVector curLoc = GetActorLocation();
 	curLoc = FMath::VInterpConstantTo(curLoc, Location, DeltaTime,DashSpeed);
 	SetActorLocation(curLoc);
+	
+	//TODO: Find A Better Solution For This
 	if(GetActorLocation() == Location)
+	{
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		bInitiateDash = false;
+	}
+	
 	if(GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(1, -1, FColor::Red, FString::Printf(TEXT("Location : %s"), *curLoc.ToString()));
